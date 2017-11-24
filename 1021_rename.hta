@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+@import url(http://fonts.googleapis.com/css?family=Roboto:400,500,700,300,100);
+
+body {
+	background-color: #FFFFFF;
+	font-family: "Roboto", helvetica, arial, sans-serif;
+	font-size: 16px;
+}
+
+div{
+	margin: 0;
+	padding: 0;
+}
+
+h3{
+	color: #888888;
+}
+
+h5{
+	color: #3333FF;
+}
+
+h6{
+	color: #FF3333;
+}
+
+fieldset { 
+	display: block;
+	margin-left: 20px;
+	margin-right: 20px;
+	padding-top: 0.35em;
+	padding-bottom: 0.625em;
+	padding-left: 0.75em;
+	padding-right: 0.75em;
+	border: 2px groove (internal value);
+}
+
+.left{
+	line-height: 16px;   
+	float: left;
+	width: 300px;
+	height: 350px;
+	display: block;
+	overflow: auto;
+}
+
+#header {
+	background-color:#116699;
+	color:white;
+	text-align:center;
+	padding:5px;
+}
+#nav {
+	line-height:30px;
+	background-color:#eeeeee;
+	height:445px;
+	width:380px;
+	float:left;
+	padding:5px; 
+}
+#section {
+	width:350px;
+	float:left;
+	padding:10px; 
+}
+#footer {
+	background-color:#116699;
+	color:white;
+	clear:both;
+	text-align:center;
+	padding:5px; 
+}
+</style>
+<title>RENAME SCRIPT</title>
+	<HTA:APPLICATION 
+		 APPLICATIONNAME="HTA RenameScript"
+		 SCROLL="yes"
+		 SINGLEINSTANCE="yes"
+		 WINDOWSTATE="normal"
+	>
+</head>
+<script type="text/vbscript">
+'========================================================================================= 
+'=== Date : 2016/07/08
+'=== Made By : Francis Desbiens
+'=== Version : 1.021
+'=========================================================================================
+
+OPTION EXPLICIT
+
+'=== Global Variables
+DIM previousPatternToLookFor
+DIM previousActionType
+DIM	currentPatternToLookFor
+
+DIM thisFileName
+DIM curFileName
+DIM newFileName
+
+DIM logs
+DIM colFiles
+DIM fileCount
+
+'=== Objects Declaration
+DIM objFSO
+DIM objRegEx
+DIM objFile
+DIM objFolder
+DIM objShell
+DIM objFolderItem
+
+previousActionType = ""
+thisFileName = "00_rename.hta"
+
+SUB Window_onLoad
+
+	'=== Resize to fit the interface size, centered
+	window.resizeTo screen.availWidth/2.3,screen.availHeight/1.45
+	window.moveTo screen.availWidth/4,screen.availHeight/6
+
+	'=== Allocate objects in memory
+	SET objRegEx = CreateObject("VBScript.RegExp")
+	SET objFSO = CreateObject("Scripting.FileSystemObject")
+	SET objFolder = objFSO.GetFolder(execPath.value)
+	SET colFiles = objFolder.Files
+	SET objShell = CreateObject("Shell.Application")
+
+END SUB 
+
+SUB ExitProgram
+
+	'=== Deallocate objects in memory
+	SET objRegEx = NOTHING
+	SET objFSO = NOTHING
+	SET objFolder = NOTHING
+	SET colFiles = NOTHING
+	SET objFile = NOTHING
+	SET	objShell = NOTHING
+	SET	objFolderItem = NOTHING
+	
+	window.close()
+	
+END SUB
+
+'=========================================================================================	
+	
+SUB RenameAllFilesInFolder
+
+	IF isEntryPatternValid AND isExecPathValid THEN
+	
+		IF regExCheckBox.checked THEN
+		
+			RenameAllFilesInFolderUsingRegexWith patternBlock.value, replacementBlock.value
+		
+		ELSE
+		
+			RenameAllFilesInFolderWith patternBlock.value, replacementBlock.value
+		
+		END IF
+		
+	END IF	
+	
+END SUB
+
+'=========================================================================================
+
+SUB AddPrefixSuffix
+	
+	IF isEntryPatternValid AND isExecPathValid THEN
+	
+		IF prefix.checked THEN
+		
+			AddPrefix patternBlock.value
+	
+		ELSE IF suffix.checked THEN
+		
+				AddSuffix patternBlock.value
+				
+			END IF
+		
+		END IF
+		
+	END IF	
+	
+END SUB
+
+'=========================================================================================
+
+FUNCTION RenameAllFilesInFolderUsingRegexWith(patternToLookFor, replacement)
+
+	ResetfileCount
+	
+	'=== Save the previous action
+	previousPatternToLookFor = patternToLookFor
+	currentPatternToLookFor = replacement
+	previousActionType = "renameWithRegex"
+	
+	objRegEx.Pattern = patternToLookFor
+
+	FOR EACH objFile IN colFiles
+	
+		curFileName = objFile.Name
+		
+		IF curFileName <> thisFileName THEN
+
+			newFileName = objRegEx.Replace(curFileName, replacement)
+
+			'=== Write to Logs only if there is a new altered line
+			IF curFileName <> newFileName THEN
+			
+				addLineToLogs curFileName
+				objFile.Name = newFileName
+				IncrementFileCount
+				
+			END IF
+		
+		END IF
+		
+	NEXT
+	
+	addFinalResultToLogs fileCount & " files containing " & patternToLookFor & " has been replaced with : " & replacement
+
+END FUNCTION
+
+'=========================================================================================
+
+FUNCTION RenameAllFilesInFolderWith(patternToLookFor, replacement)
+
+	ResetfileCount
+	
+	'=== Save the previous action
+	previousPatternToLookFor = patternToLookFor
+	currentPatternToLookFor = replacement
+	previousActionType = "rename"
+		
+	FOR EACH objFile IN colFiles
+		
+		curFileName = objFile.Name
+		
+		IF curFileName <> thisFileName AND InStr(curFileName,patternToLookFor) > 0 THEN
+
+			addLineToLogs curFileName
+			newFileName = Replace(curFileName, patternToLookFor, replacement)
+			objFile.Name = newFileName
+			IncrementFileCount
+		
+		END IF
+		
+	NEXT	
+	
+	addFinalResultToLogs fileCount & " files containing " & patternToLookFor & " has been replaced with : " & replacement
+
+END FUNCTION		
+
+'=========================================================================================
+
+FUNCTION AddPrefix(patternToLookFor)
+
+	DIM newpatternToLookFor
+
+	ResetfileCount
+
+	'=== Save the previous action
+	currentPatternToLookFor = patternToLookFor
+	previousPatternToLookFor = ""
+	previousActionType = "addPrefix"	
+
+	FOR EACH objFile IN colFiles
+
+		curFileName = objFile.Name
+
+		IF curFileName <> thisFileName THEN
+		
+			IncrementFileCount
+			addLineToLogs curFileName
+		   
+			'=== Replace all '#' in the patternBlock (patternToLookFor) by the fileCount
+			newpatternToLookFor = Replace(patternToLookFor, "#", fileCount)
+			newpatternToLookFor = Right(newpatternToLookFor, Len(newpatternToLookFor)-Len(fileCount)+1)
+			newFileName = newpatternToLookFor & curFileName
+			objFile.Name = newFileName
+		
+		END IF
+		
+	NEXT
+	  
+	addFinalResultToLogs fileCount & " files has been added with the prefix " & patternToLookFor
+
+END FUNCTION 
+
+'=========================================================================================
+
+FUNCTION AddSuffix(patternToLookFor)
+	
+	DIM newpatternToLookFor
+	
+	ResetfileCount
+
+	'=== Save the previous action
+	currentPatternToLookFor = patternToLookFor
+	previousPatternToLookFor = ""
+	previousActionType = "addSuffix"
+	
+	FOR EACH objFile IN colFiles
+
+		curFileName = objFile.Name
+
+		IF curFileName <> thisFileName THEN
+		
+			IncrementFileCount
+			addLineToLogs curFileName
+		   
+			'=== Replace all '#' in the patternBlock (patternToLookFor) by the fileCount
+			newpatternToLookFor = Replace(patternToLookFor, "#", fileCount)
+			newpatternToLookFor = Right(newpatternToLookFor, Len(newpatternToLookFor)-Len(fileCount)+1)
+			newFileName = curFileName & newpatternToLookFor
+			objFile.Name = newFileName
+		
+		END IF
+		
+	NEXT
+	  
+	addFinalResultToLogs fileCount & " files has been added with the suffix " & patternToLookFor
+
+END FUNCTION 
+
+'=========================================================================================
+
+SUB Undo
+
+	DIM pattern
+	DIM replaceWith
+	DIM i
+	
+	pattern = currentPatternToLookFor
+	replaceWith = previousPatternToLookFor
+
+	IF isPreviousActionValid THEN
+	
+		'=== Try Undo Prefix
+		IF previousActionType = "undoPrefix" THEN
+		
+			AddPrefix pattern
+			
+		END IF
+	
+		IF previousActionType = "addPrefix" THEN
+			
+			replaceWith = "^"
+			
+			FOR i = 1 TO Len(pattern) STEP 1
+			
+				replaceWith = replaceWith + "."
+				
+			NEXT
+
+			RenameAllFilesInFolderUsingRegexWith replaceWith, ""
+			previousActionType = "undoPrefix"
+			
+		END IF	
+
+		'=== Try Undo Suffix
+		IF previousActionType = "undoSuffix" THEN
+		
+			AddPrefix pattern
+			
+		END IF
+		
+		IF previousActionType = "addSuffix" THEN
+		
+			replaceWith = ""
+			
+			FOR i = 1 TO Len(pattern) STEP 1
+			
+				replaceWith = replaceWith + "."
+				
+			NEXT
+			
+			replaceWith = replaceWith + "$"
+
+			RenameAllFilesInFolderUsingRegexWith replaceWith, ""
+			previousActionType = "undoSuffix"
+		
+		END IF	
+		
+		'=== Try Undo Rename
+		IF previousActionType = "rename" THEN
+		
+			RenameAllFilesInFolderWith pattern, replaceWith
+			
+		END IF	
+		
+		IF previousActionType = "renameWithRegex" THEN	
+		
+			RenameAllFilesInFolderUsingRegexWith pattern, replaceWith
+			
+		END IF	
+		
+	END IF	
+
+END SUB	
+
+'=========================================================================================
+
+SUB OpenBrowseFolder
+
+	CONST WINDOW_HANDLE = 0
+	CONST OPTIONS = 0
+
+	SET objFolder = objShell.BrowseForFolder(WINDOW_HANDLE, "Select a folder:", OPTIONS, "C:\") 
+	
+	IF objFolder IS NOTHING THEN
+
+		'=== The user selected Nothing so do Nothing
+
+	ELSE
+	
+		SET objFolderItem = objFolder.Self
+
+		execPath.value = objFolderItem.Path
+		
+	END IF
+	
+END SUB	
+
+'=========================================================================================
+
+SUB ResetfileCount
+
+	fileCount = 0
+
+END SUB
+
+SUB IncrementFileCount
+
+	fileCount = fileCount + 1
+
+END SUB
+
+SUB addLineToLogs(text)
+
+	logs = logs + text & "<br />"
+	UpdateLogs
+
+END SUB
+
+SUB addFinalResultToLogs(text)
+
+	logs = logs + "<h5>" & text & "</h5>"
+	UpdateLogs
+
+END SUB
+
+SUB addErrorToLogs(text)
+
+	logs = logs + "<h6>" & text & "</h6>"
+	UpdateLogs
+
+END SUB
+
+SUB UpdateLogs
+
+	LogsArea.innerHtml = logs
+
+END SUB
+
+SUB ClearLogs
+
+	logs = ""
+	LogsArea.innerHtml = ""
+
+END SUB
+
+'=================================== VALIDATIONS =========================================
+
+FUNCTION isEntryPatternValid
+
+	DIM isValid
+
+	IF patternBlock.value <> "" THEN
+	
+		isValid = TRUE
+		
+	ELSE 
+	
+		addErrorToLogs "ERROR 01 : The entry pattern is not valid !"
+		isValid = FALSE
+		
+	END IF
+
+	isEntryPatternValid = isValid
+
+END FUNCTION
+
+FUNCTION isExecPathValid
+
+	DIM exists
+	   
+	exists = objFSO.FolderExists(execPath.value)
+
+	IF NOT exists THEN 
+		
+		addErrorToLogs "ERROR 02 : The execution path is incorrect !"
+			
+	END IF
+	
+	isExecPathValid = exists
+
+END FUNCTION
+
+FUNCTION isPreviousActionValid
+
+	DIM isValid
+	
+	IF previousActionType = "" THEN
+	
+		addErrorToLogs "ERROR 03 : There is no previous actions !"
+		isValid = FALSE
+		
+	ELSE IF currentPatternToLookFor = "" THEN
+		
+		addErrorToLogs "ERROR 04 : Enable to undo !"
+		isValid = FALSE
+		
+		ELSE
+		
+			isValid = TRUE
+			
+		END IF
+		
+	END IF
+
+	isPreviousActionValid = isValid	
+
+END FUNCTION
+</script>
+	<body>
+		<div id="header">
+			<h2>RENAME SCRIPT</h2>
+			<fieldset>
+				<center>
+					Path : <input type="text" id="execPath" value=".\" size="40"></input>
+					<input type="button" value=" Browse " onClick="OpenBrowseFolder">					
+				</center>
+			</fieldset>
+		</div>
+		<div id="nav">
+			<br />
+				<fieldset>
+					<h3>INPUTS</h3>
+					Pattern: 
+					<br />
+					<input type="text" id="patternBlock" size="20"></input>
+					<input type="button" value="   Add   " onClick="AddPrefixSuffix">
+					<br />
+					Replace with: 
+					<br />
+					<input type="text" id="replacementBlock" size="20"></input>
+					<input type="button" value="Replace" onClick="RenameAllFilesInFolder">		
+					<br />
+					<h3>OPTIONS</h3>
+					<center>
+						<input type="checkbox" id="regExCheckbox" name="regExCheckbox" value="regExCheckbox"> Enable Regex
+						<br />
+						<input type="radio" id="prefix" name="type" value="Prefix" checked="true"> Prefix
+						<input type="radio" id="suffix" name="type" value="Suffix"> Suffix
+					</center>
+					<br /> 
+					<center>
+						<input type="button" value="<< Undo" onClick="Undo"> &nbsp&nbsp&nbsp&nbsp&nbsp&nbsp
+						<input type="button" value="Clear Logs" onClick="ClearLogs"> 
+						<input type="button" value=" Exit " onClick="ExitProgram"> 
+					</center>
+				</fieldset>
+		</div>		
+		<div id="section">
+				<br />
+				<fieldset>
+					<br />
+					<span class="left" id="LogsArea"></span> 
+					<br />
+				</fieldset>
+		</div>
+		<div id="footer">
+			v 1.021 Copyright © Francis Desbiens 2016
+		</div>
+	</body>
+</html>
